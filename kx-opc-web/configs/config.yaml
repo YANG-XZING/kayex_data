@@ -1,0 +1,167 @@
+# kx-opc-web 运行配置。时长格式：1s / 5m / 24h；相对路径基于本文件所在目录。
+
+listen: ":8700"                     # 网站端口
+
+# 登录账户（为空则不需要登录，所有人都按内部账户）。role：admin 内部账户，全部功能；
+# customer 客户，只看“上位机数据”（配置信息 → 客户可见点位里勾选的点位）和“上位机记录”，全部炉台
+accounts:
+  - { user: KayexAdmin, password: "Kayex123", role: admin }
+  - { user: Admin,      password: "1",        role: customer }
+session_ttl: 12h                    # 登录多久后要重新登录
+
+tdengine:
+  dsn: "root:taosdata@ws(10.65.104.171:6041)/kx_opc"  # taosWS 连接串（经 taosAdapter 6041 端口），库名为采集数据所在的库
+  super_table: opc_data             # kx-opc-client 写入的超级表
+  max_conns: 8                      # 最多同时打开的连接数
+  # 网站自己的表（opc_point_info 点位信息、web_alarm 告警）和采集数据在同一个库，启动时自动创建；每一列都带这个压缩
+  compress: zstd                    # lz4 / zlib / zstd / xz / disabled
+  compress_level: high              # low / medium / high
+
+realtime:
+  poll_interval: 1s                 # 有人在看的炉台多久查一次最新行（采集约每秒一行）
+
+history:
+  max_range: 2h                     # 曲线一次最多查多长时间
+  max_tags: 10                      # 一次最多查几个点位
+  table_max_range: 744h             # 查看数据的历史表格（分页读取）和导出 CSV 一次最多查 31 天
+  heart_column: HEART_DATETIME      # 导出 CSV 时紧跟“时间”列加一列上位机心跳时间（上位机本地时间）；为空不加
+
+monitor:
+  interval: 5s                      # 多久检查一次全部炉台的心跳
+  heartbeat_column: HEART_UTC_TIME  # 心跳列，值为 yyyy-MM-dd HH:mm:ss
+  heartbeat_zone: UTC               # 心跳值的时区；改用 HEART_DATETIME 时写 Asia/Shanghai
+  heartbeat_timeout: 60s            # 心跳超过该时长没有变化 → 心跳停止
+  clock_skew_limit: 30m             # |心跳时间 - 基准时间| 超过该值 → 时间不一致（黄色告警）
+  tags_refresh: 1m                  # 多久重新读取一次炉台清单
+
+# 告警记录（写入 web_alarm 表：触发、恢复各一行）。心跳停止按上面的 heartbeat_timeout 判定
+alarm:
+  skew_confirm: 3                   # 时间差连续 3 轮检查（约 15 秒）超限才记告警，连续 3 轮正常才记恢复，避免来回跳
+  history_max_range: 744h           # 告警记录一次最多查 31 天
+  record: true                      # 写入 web_alarm；只能有一个实例写，本机调试连同一个库时改成 false
+
+# 晶棒数据导出：用 kx-inner-processor 补写的晶编号 / 炉次号和晶棒台账，整棒或按工步导出 opc_data
+crystal:
+  crystal_column: inner_crystal_no  # 晶编号列
+  furnace_column: inner_furnace_no  # 炉次号列
+  first_column: is_first            # 是否首棒列
+  step_column: STATE                # 工步号列
+  ledger_table: inner_crystal_info  # 晶棒台账（与采集数据同库）
+  furnace_table: inner_furnace_info # 炉次台账：每一炉的熔料 / 预热准备 / 预热熔接时间
+  list_days: [7, 30, 90]            # 页面上可选的“最近多少天”
+  max_range: 744h                   # 一次最多导出 31 天
+  # 工步号（STATE，一位小数）的名称；sub: true 为子工步。没列出的显示为“工步 N”
+  # 7.x、14.x、16.x、20.x 是同一主工步的三选一
+  step_names:
+    - { code: "0.0",  name: "手动" }
+    - { code: "1.0",  name: "开始自动生长" }
+    - { code: "2.0",  name: "抽空" }
+    - { code: "3.0",  name: "检漏" }
+    - { code: "4.0",  name: "压力化" }
+    - { code: "5.0",  name: "熔料" }
+    - { code: "7.0",  name: "熔料预热准备" }
+    - { code: "7.1",  name: "熔料粘渣预热准备" }
+    - { code: "7.2",  name: "调温预热准备" }
+    - { code: "8.0",  name: "预热/熔接" }
+    - { code: "9.0",  name: "调温" }
+    - { code: "10.0", name: "引晶" }
+    - { code: "11.0", name: "放肩" }
+    - { code: "12.0", name: "转肩" }
+    - { code: "13.0", name: "等径" }
+    - { code: "14.0", name: "循环收尾" }
+    - { code: "14.1", name: "完结收尾" }
+    - { code: "15.0", name: "快速收尾" }
+    - { code: "16.0", name: "非取段停炉" }
+    - { code: "16.1", name: "取段停炉" }
+    - { code: "16.2", name: "异常停炉" }
+    - { code: "17.0", name: "隔离", sub: true }
+    - { code: "18.0", name: "副室净化", sub: true }
+    - { code: "19.0", name: "煅烧" }
+    - { code: "20.0", name: "取段冷却加料" }
+    - { code: "20.1", name: "取段冷却调温" }
+    - { code: "20.2", name: "取段冷却结晶" }
+    - { code: "21.0", name: "渣盖提出", sub: true }
+    - { code: "21.1", name: "粘渣准备", sub: true }
+    - { code: "21.2", name: "放断提出", sub: true }
+    - { code: "22.0", name: "料筒提入", sub: true }
+    - { code: "23.0", name: "料筒提出", sub: true }
+    - { code: "24.0", name: "开始加料", sub: true }
+    - { code: "24.1", name: "二次加料", sub: true }
+    - { code: "25.0", name: "籽晶提入", sub: true }
+    - { code: "25.1", name: "籽晶提出", sub: true }
+    - { code: "26.0", name: "炉盖旋回", sub: true }
+    - { code: "27.0", name: "炉盖旋开", sub: true }
+    - { code: "28.0", name: "炉筒旋回", sub: true }
+    - { code: "29.0", name: "炉筒旋开", sub: true }
+    - { code: "30.0", name: "紧急安全保护" }
+    - { code: "31.0", name: "自动装料" }
+    - { code: "32.0", name: "回熔" }
+    - { code: "33.0", name: "自动放埚", sub: true }
+    - { code: "34.0", name: "加料预热", sub: true }
+    - { code: "35.0", name: "自动拆炉" }
+    - { code: "36.0", name: "副室旋开", sub: true }
+    - { code: "37.0", name: "加料定埚", sub: true }
+    - { code: "38.0", name: "自动合炉" }
+
+# 全量数据导出：PLC / CCD 取数、硬件信息（原 TDengine 取数网站，导出的 CSV 与原网站一致）。数据在 kayex_data，设备清单读这个库的标签
+extract:
+  database: kayex_data              # PLC、CCD 数据所在的库
+  plc_stable: dbcenter_data
+  ccd_stable: hmi_ccddata
+  device_tag: device_ip             # 按这个标签区分炉台
+  ts_col: ts
+  time_col: capture_time            # PLC 与 CCD 按采集时间关联
+  hardware_table: sop_hardware.station_info
+  hardware_ip_col: ip
+  timezone: Asia/Shanghai           # 页面输入的时间按这个时区解释
+  chunk: 72h                        # 按 3 天一段查询
+  max_rows: 5000000                 # 一次最多 500 万行
+  max_concurrent: 2                 # 同时进行的取数查询数，限制内存峰值
+  cache_dir: cache                  # 查询结果写成临时文件，供之后导出（不占内存）
+  cache_ttl: 1h                     # 查询结果保留 1 小时
+  cache_max: 30                     # 最多保留 30 次查询结果
+  plc_points:                       # 页面默认的 PLC 点位；33.0-0（工步）是分段所需
+    - { point: "33.0-0",   name: "工步", on: true }
+    - { point: "33.24-0",  name: "实际直径", on: true }
+    - { point: "33.320-0", name: "晶体长度", on: true }
+    - { point: "33.20-0",  name: "目标直径", on: true }
+    - { point: "33.192-0", name: "晶升速度实际值(实时拉速)", on: true }
+    - { point: "33.8-0",   name: "晶升速度设定值(设定拉速)", on: true }
+    - { point: "33.124-0", name: "实际液面温度", on: false }
+    - { point: "16.12-0",  name: "主加功率", on: false }
+  ccd_points:
+    - { point: "BodyDM02R_003", name: "半径r像素", on: true }
+    - { point: "SeedLM04R_006", name: "晶点检测类型", on: false }
+  step_labels:                      # 页面上可选的常用工步
+    - { step: "10", label: "引晶" }
+    - { step: "11", label: "放肩" }
+    - { step: "12", label: "转肩" }
+    - { step: "13", label: "等径" }
+    - { step: "14", label: "循环收尾" }
+    - { step: "0",  label: "手动" }
+
+# 上位机记录：上位机写入 kayex_data 的操作记录、报警记录。按上位机时间 capture_time 筛选和显示
+hmi:
+  database: kayex_data
+  record_stable: hmilog_record      # 操作记录：capture_time, name, value, color
+  alarm_stable: hmilog_alarm        # 报警记录：capture_time, content
+  max_range: 744h                   # 一次最多查 31 天
+
+# 基准时间：服务器时钟不准，定期向下列来源取标准时间（按顺序尝试，不修改系统时钟）
+clock:
+  ntp_servers: [ntp.aliyun.com, ntp.tencent.com]
+  http_urls: ["https://www.aliyun.com", "https://www.baidu.com"]  # NTP 都不通时用响应头的 Date（精确到秒）
+  sync_interval: 5m
+
+# 网段前缀 → 区号，用于按区筛选炉台（与 kx-opc-client 的 furnaces.json 一致）
+areas:
+  - { prefix: "10.65.108.", area: "A" }
+  - { prefix: "10.65.109.", area: "AA" }
+  - { prefix: "10.65.110.", area: "B" }
+  - { prefix: "10.65.111.", area: "BB" }
+  - { prefix: "10.65.104.", area: "C" }
+  - { prefix: "10.65.105.", area: "CC" }
+
+log:
+  level: info                       # debug / info / warn / error
+  file: logs/kx-opc-web.log         # 为空则只输出到控制台（journald）

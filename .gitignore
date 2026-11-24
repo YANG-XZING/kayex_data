@@ -1,0 +1,32 @@
+# Local site credentials and generated release packages
+/profiles/
+/dist/
+__pycache__/
+*.pyc
+# Offline middleware installers and archive backups (keep local)
+*.tar.gz
+*.tgz
+*.tar
+*.rpm
+*.7z
+*.zip
+# Compiled applications and editor binary backups
+*.exe
+*.exe~
+*.dll
+*.so
+*.a
+*.o
+*.test
+/bigdata_consumer/bigdata_consumer
+/bigdata_consumer/bigdata_consumer_new
+/bigdata_consumer/bigdata_consumer_backup
+/hmi_consumer/hmi_consumer
+/hmi_consumer/hmi_consumer_new
+/kx-opc-client/bin/
+/kx-opc-web/bin/
+/kx-opc-client/dist/
+/kx-opc-web/dist/
+/kx-opc-web/web/node_modules/
+/kx-opc-web/internal/web/dist/*
+!/kx-opc-web/internal/web/dist/.gitkeep

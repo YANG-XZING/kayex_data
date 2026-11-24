@@ -1,0 +1,22 @@
+[Unit]
+Description=KX OPC 服务可视化网站（端口 8700）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kxopc
+Group=kxopc
+WorkingDirectory=/opt/kx-opc-web
+ExecStart=/opt/kx-opc-web/kx-opc-web -config /opt/kx-opc-web/config.yaml
+Environment=TZ=Asia/Shanghai
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+LimitNOFILE=65535
+# 内存上限：超过即由 systemd 重启，避免影响同机的 TDengine。
+# CentOS 7 的 systemd（219）只认 MemoryLimit；新版 systemd 也兼容这个写法
+MemoryLimit=512M
+
+[Install]
+WantedBy=multi-user.target
