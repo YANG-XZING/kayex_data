@@ -1,5 +1,8 @@
 # kx-opc-web
 
+> 新部署说明：OPC 数据改为写入 `kayex_data`，默认保留 365 天；手工初始化不包含程序自动创建的表，也不包含 OPC 晶棒/炉次台账。界面保持不变，相关晶棒功能暂可能无数据。部署与配置以根目录 `DEPLOYMENT.md` 为准。
+
+
 OPC 服务可视化网站：查看炉台实时数据、实时 / 历史曲线、历史数据导出、通讯预警与告警记录、按晶棒导出、上位机记录，并合并了原 TDengine 取数网站（Flask 版 TD_frontend）的 PLC / CCD 取数和硬件信息（全量数据导出）。要登录，内部账户看全部功能，客户账户只看上位机数据和上位机记录（见下文“账户”）。
 OPC 数据来自 TDengine 库 `kx_opc` 里 kx-opc-client 写入的 `opc_data`，不直连炉台；PLC / CCD 数据来自 `kayex_data`。Go 单程序，前端打包后嵌在程序里，端口 **8700**。
 
@@ -17,7 +20,7 @@ OPC 数据来自 TDengine 库 `kx_opc` 里 kx-opc-client 写入的 `opc_data`，
 | 全量数据导出 · PLC / CCD 取数 | 原取数网站的功能：设备选择框按区分组显示 kayex_data 的全部设备（可搜索），选时间（今天 / 昨天 / 最近 24 小时 / 3 天 / 7 天快捷），取 `dbcenter_data`，可按采集时间关联 `hmi_ccddata`（按秒对齐 / 最近时刻），按工步分段。查询区间就是选的开始～结束（原网站会自动把结束时间延 1 天，这里不延）。结果有分段列表，导出全量 CSV、分炉次 / 晶棒 CSV、单段或全部分段（zip），文件格式与原网站一致 |
 | 全量数据导出 · 硬件信息 | 原取数网站的硬件信息模式：查 `sop_hardware.station_info` 并导出 |
 | OPC 监控 · 配置信息 | **点位信息**：每个点位（`opc_data` 的列名，就是 OPC 的 tag）对应的中文名和 DB 点位，全站显示和导出表头都用它；页面只读，**下载 CSV 改好后上传**，或直接在数据库里 INSERT，见下文“点位信息”。**客户可见点位**：勾选客户账户“上位机数据”里能看的点位 |
-| 上位机 · 上位机记录（操作记录 / 报警记录） | 上位机写入 `kayex_data` 的 `hmilog_record`（名称、值、颜色）和 `hmilog_alarm`（报警内容）。当前炉台或全部炉台，按时间（最长 31 天）和关键字查询，按上位机时间从前往后排，默认每页 10 条，可选 10 / 20 / 50 / 100 条或自定义 1–1000 条，支持首页 / 上一页 / 下一页 / 尾页翻页，可导出 CSV。数据库用前后各放宽一天的 `ts` 范围读取候选记录，表格和导出按**上位机时间** `capture_time` 筛选和显示。内部账户和客户都有 |
+| 上位机 · 上位机记录（操作记录 / 报警记录） | 上位机写入 `kayex_data` 的 `hmilog_record`（名称、值、颜色）和 `hmilog_alarm`（报警内容）。当前炉台或全部炉台，按时间（最长 31 天）和关键字查询，按数据库时间 ts 升序排列，默认每页 10 条，可选 10 / 20 / 50 / 100 条或自定义 1–1000 条，支持首页 / 上一页 / 下一页 / 尾页翻页，可导出 CSV。数据库用前后各放宽一天的 `ts` 范围读取候选记录，表格和导出按**上位机时间** `capture_time` 筛选和显示。内部账户和客户都有 |
 | 上位机 · 上位机数据（只有客户账户） | 就是“查看数据”页（实时数据 + 历史数据），只有客户可见的点位 |
 
 导出的 CSV 带 UTF-8 BOM，Excel 直接打开不乱码，表头为“中文名 [点位]”，边查边写，不占内存。
@@ -133,7 +136,7 @@ PLC / CCD 取数和硬件信息是原取数网站（Flask，:8600）的 Go 重�
 | `GET /api/history/page?table=&cols=&from=&to=&offset=&limit=` | 历史数据表格的一页（最长 31 天，一页最多 5000 行，offset = 0 时带总行数） |
 | `GET /api/history/export?…` | 同样的参数导出 CSV（最长 31 天） |
 | `GET /api/export/page?table=&cols=&from=&to=&offset=&limit=` | 全量导出页的分页预览（最长 31 天，可选全部可见点位，一页最多 1000 行；客户账户仍按可见点位校验） |
-| `GET /api/hmi/records?kind=&ip=&from=&to=&q=&offset=&limit=` | 上位机记录的一页：kind 为 record（操作记录）或 alarm（报警记录），ip 为空为全部炉台，q 为关键字，按时间先后，带总条数 |
+| `GET /api/hmi/records?kind=&ip=&from=&to=&q=&offset=&limit=` | 上位机记录的一页：kind 为 record（操作记录）或 alarm（报警记录），ip 为空为全部炉台，q 为关键字，按 capture_time 筛选、按 ts 升序排列，带总条数 |
 | `GET /api/hmi/records/export?…` | 同样的参数导出 CSV |
 | `GET /api/alarms/active` | 当前还没恢复的告警 |
 | `GET /api/alarms?from=&to=&device=&type=[&format=csv]` | 告警记录（每行一次告警：开始、恢复、持续） |

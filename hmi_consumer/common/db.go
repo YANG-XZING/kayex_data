@@ -31,8 +31,8 @@ func InitDB() {
 		logx.Fatalf("DB", "数据库连接失败: %v", err)
 	}
 	// 根据需要设置连接池
-	DB.SetMaxOpenConns(100)
-	DB.SetMaxIdleConns(50)
+	DB.SetMaxOpenConns(config.MaxOpenConns)
+	DB.SetMaxIdleConns(config.MaxIdleConns)
 }
 
 func EnsureTableExists(tableName, stableName, deviceID, ip string) {

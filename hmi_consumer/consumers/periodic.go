@@ -2,6 +2,7 @@ package consumers
 
 import (
 	"fmt"
+	"hmi1.1_consumer/config"
 	"strconv"
 	"strings"
 	"time"
@@ -142,7 +143,7 @@ func HandleHotHandle(body []byte, stableName string) error {
 	})
 
 	// 2. 分批次写入数据库（每 100 条执行一次 SQL）
-	const batchSize = 100
+	batchSize := config.BatchSize
 	totalRows := len(rows)
 
 	for batchStart := 0; batchStart < totalRows; batchStart += batchSize {

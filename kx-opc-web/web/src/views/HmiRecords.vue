@@ -1,6 +1,6 @@
 <script setup>
 // 上位机记录：上位机写入 kayex_data 的操作记录、报警记录（侧栏两个子菜单，route.meta.hmi），按时间（最长 31 天）和关键字查询，可导出 CSV。
-// 当前炉台（上方选择）或全部炉台；按时间先后排，默认每页 10 条，支持快捷选择及自定义条数。表格和导出按上位机时间筛选和显示。
+// 当前炉台（上方选择）或全部炉台；按 ts 升序排，默认每页 10 条，支持快捷选择及自定义条数。表格和导出按上位机时间筛选和显示。
 // 内部账户和客户账户共用这个页面。
 import { ref, shallowRef, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
@@ -219,7 +219,7 @@ watch([kind, scope, () => state.current], ([nextKind], [previousKind]) => {
         <button class="btn primary" :disabled="loading" @click="query">{{ loading ? '查询中…' : '查询' }}</button>
       </div>
     </div>
-    <div class="hint muted">最长 {{ fmtDuration(maxRange / 1000) }}，按上位机时间（北京时间）筛选。开始时间包含在内，结束时间为截止。</div>
+    <div class="hint muted">最长 {{ fmtDuration(maxRange / 1000) }}，按上位机时间（北京时间）筛选，结果按 ts 升序排列。开始时间包含在内，结束时间为截止。</div>
     <div v-if="error" class="err">{{ error }}</div>
   </div>
 

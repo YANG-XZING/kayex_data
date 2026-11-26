@@ -2,11 +2,11 @@
 # 要采集哪些炉台写在 furnaces.json 里。
 
 tdengine:
-  dsn: "root:taosdata@ws(10.65.104.171:6041)/kx_opc"  # taosWS 连接串（经 taosAdapter 6041 端口） 晶品TD地址
-  # dsn: "root:taosdata@ws(172.16.2.124:6041)/kx_opc"  # taosWS 连接串（经 taosAdapter 6041 端口） 无锡TD地址
+  dsn: "root:taosdata@ws(10.65.104.171:6041)/kayex_data"  # taosWS 连接串（经 taosAdapter 6041 端口） 晶品TD地址
+  # dsn: "root:taosdata@ws(172.16.2.124:6041)/kayex_data"  # taosWS 连接串（经 taosAdapter 6041 端口） 无锡TD地址
   # 库不存在时自动建库的参数（CREATE DATABASE 库名 之后的部分），为空则不自动建库。库已存在时不会改它的参数。
   # MAXROWS/MINROWS 越大数据块越大、压缩率越高；KEEP 为保留天数
-  database_options: "PRECISION 'ms' KEEP 1095d DURATION 10d MAXROWS 40000 MINROWS 1000 COMP 2 CACHEMODEL 'last_row'"
+  database_options: "PRECISION 'ms' KEEP 365d DURATION 1d MAXROWS 40000 MINROWS 1000 COMP 2 WAL_LEVEL 2 CACHEMODEL 'last_row'"
   # 每一列（含 ts）的压缩：建表、加列时带上 COMPRESS ... LEVEL ...；已有列不一致时启动后自动改过来（只影响之后落盘的数据）
   compress: zstd                    # lz4 / zlib / zstd / xz / disabled；xz 压缩率最高但写入和查询都更慢
   compress_level: high              # low / medium / high

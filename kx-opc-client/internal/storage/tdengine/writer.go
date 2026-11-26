@@ -344,7 +344,7 @@ func (w *Writer) writeHeartbeatJumps(ctx context.Context, rows []Row) error {
 	}
 	table := fmt.Sprintf("`%s`.`opc_heartbeat_jump`", w.database)
 	if !w.jumpTableReady {
-		ddl := "CREATE TABLE IF NOT EXISTS " + table + " (ts TIMESTAMP, device_ip VARCHAR(64) PRIMARY KEY, device_id VARCHAR(64), seconds BIGINT)"
+		ddl := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (ts TIMESTAMP %s, device_ip VARCHAR(64) PRIMARY KEY %s, device_id VARCHAR(64) %s, seconds BIGINT %s)", table, w.compress(), w.compress(), w.compress(), w.compress())
 		if _, err := w.db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("创建心跳跳变表: %w", err)
 		}

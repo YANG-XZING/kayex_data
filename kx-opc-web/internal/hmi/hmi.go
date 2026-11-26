@@ -1,6 +1,6 @@
 // Package hmi 查询上位机记录：上位机写入 kayex_data 的操作记录（hmilog_record）和报警记录（hmilog_alarm）。
 // 两张都是超级表，每台炉台一张子表，标签 device_id、device_ip。用扩大后的 ts 范围缩小扫描范围，
-// 按上位机时间 capture_time 筛选、排序和显示。分页返回给表格，导出逐行流式写 CSV。
+// 按上位机时间 capture_time 筛选和显示，结果按 ts 升序排列。分页返回给表格，导出逐行流式写 CSV。
 package hmi
 
 import (
@@ -183,7 +183,7 @@ func (s *Service) selectSQL(k kind, q Query) (string, []Column) {
 	for i, c := range cols {
 		quoted[i] = td.Quote(c.Key) // value 是 TD 关键字，必须加反引号
 	}
-	return "SELECT " + strings.Join(quoted, ", ") + s.where(k, q) + " ORDER BY capture_time, ts", cols
+	return "SELECT " + strings.Join(quoted, ", ") + s.where(k, q) + " ORDER BY ts ASC", cols
 }
 
 // Colors 返回所选炉台和时间范围内实际出现过的操作记录颜色。
@@ -220,7 +220,7 @@ func (s *Service) Colors(ctx context.Context, q Query) ([]string, error) {
 	return colors, nil
 }
 
-// PageOf 返回第 offset 行起的 limit 行（按上位机时间先后）和总条数。
+// PageOf 返回第 offset 行起的 limit 行（按 ts 升序）和总条数。
 func (s *Service) PageOf(ctx context.Context, q Query, offset, limit int) (*Page, error) {
 	k, err := s.validate(q)
 	if err != nil {

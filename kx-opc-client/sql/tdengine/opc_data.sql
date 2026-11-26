@@ -1,34 +1,91 @@
--- 程序启动时会自动执行以下建库、建表（已存在则跳过），新点位自动 ALTER 加列，子表在首次写入时自动创建。
--- 本文件仅供 DBA 手工建库建表或核对。压缩方式按 config.yaml 的 compress / compress_level，默认 zstd / high。
-
-CREATE DATABASE IF NOT EXISTS `kx_opc` PRECISION 'ms' KEEP 1095d DURATION 10d MAXROWS 40000 MINROWS 1000 COMP 2 CACHEMODEL 'last_row';
-
-CREATE STABLE IF NOT EXISTS `kx_opc`.`opc_data` (
-  `ts`             TIMESTAMP    COMPRESS 'zstd' LEVEL 'high',  -- 数据采集时间：服务端心跳变化到达客户端的时刻（毫秒）
-  `HEART_DATETIME` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high'   -- 服务端心跳；其余点位列由程序按点名自动添加，类型按 OPC 节点类型
-) TAGS (                                                       -- 标签不支持列压缩
-  `device_id` VARCHAR(64),        -- 炉台号，如 A12
-  `device_ip` VARCHAR(64)         -- 炉台 IP，如 10.65.108.12
-);
-
--- 新点位列（程序自动添加），同样带压缩选项：
--- ALTER STABLE `kx_opc`.`opc_data` ADD COLUMN `MELT_TEMP_PV` FLOAT COMPRESS 'zstd' LEVEL 'high';
-
--- 已有列改压缩方式（程序启动时自动对不一致的列执行；已有数据要 COMPACT 后才按新方式压缩）：
--- ALTER STABLE `kx_opc`.`opc_data` MODIFY COLUMN `MELT_TEMP_PV` COMPRESS 'zstd' LEVEL 'high';
--- 查看每列的压缩方式（compress、level 两列）：
--- DESCRIBE `kx_opc`.`opc_data`;
-
--- 子表示例（程序自动创建）：
--- CREATE TABLE IF NOT EXISTS `kx_opc`.`opc_10_65_108_12` USING `kx_opc`.`opc_data` TAGS ('A12', '10.65.108.12');
-
--- 列名规则：列名 = 点名，保留原始大小写（TDengine 中用反引号包裹的名称区分大小写，查询时也要加反引号）；
---   非字母数字下划线替换为 _，数字开头或与 ts/device_id/device_ip 同名时加 p_ 前缀
-
--- 查询示例
--- 某炉最近 1 小时：
---   SELECT ts, `MELT_TEMP_PV` FROM kx_opc.opc_data WHERE device_id = 'A12' AND ts > NOW - 1h;
--- 数值列按 OPC 类型建（FLOAT/DOUBLE 等），可以直接计算：
---   SELECT _wstart, AVG(`MELT_TEMP_PV`) FROM kx_opc.opc_data WHERE device_id = 'A12' AND ts > NOW - 1d INTERVAL(1m);
--- 每台炉最新一行：
---   SELECT device_id, LAST_ROW(*) FROM kx_opc.opc_data PARTITION BY device_id;
+-- Full point schema exported from 171; initialize 00_databases.sql first.
+CREATE STABLE IF NOT EXISTS `kayex_data`.`opc_data` (
+  `ts` TIMESTAMP COMPRESS 'zstd' LEVEL 'high',
+  `HEART_DATETIME` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `ALARMLIST` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `AR_FLOWMETERSET_UP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `AVG_SPEED` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `BOTTOM_CURRENT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `BOTTOM_POWER` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `BOTTOM_R` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `BOTTOM_VOL` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `CRUC_LIFT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `CRUC_POSITION` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `CRUC_ROTATION` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `CRYSTAL_LENGTH` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `CRYSTAL_SHAKE` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DB248DBD1178` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DB3001DBD50` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DB3001DBD54` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DB3001DBD58` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DB48DBD180` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAMETER` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAMETER_SV` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_D` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_D_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_I` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_I_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_P` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `DIAM_CTRL_P_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `FURNACE_ID` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `GAS_FLOW` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `GROWTH_RATE_SP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `HEART_UTC_TIME` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `HMIDataErrorID` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `HMI_VERSION` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `LOCATION` BOOL COMPRESS 'zstd' LEVEL 'high',
+  `LPIPE_TEMP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MAIN_POWER` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MAIN_POWER_SP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MAIN_PRESSURE_1000MT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MAIN_R` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MAIN__HEATER_ON` BOOL COMPRESS 'zstd' LEVEL 'high',
+  `MELT_GAP_PV` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MELT_PERCENT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `MELT_TEMP_PV` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `NET_WEIGHT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `NEW_PROG_D_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `NEW_PROG_KIFF_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `NEW_PROG_P_RESULT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `Neck_LATE_AVG_PULL_SPEED` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PLCErrorID` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PLC_VERSION` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE1` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE10` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE11` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE2` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE3` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE4` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE5` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE6` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE7` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE8` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PROCESSRUNCODE9` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `REMAIN_WEIGHT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `RPIPE_TEMP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SEED_LIFT` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SEED_LIFT_SP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SEED_MElT_VOL` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SEED_POSITION` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SHIELD_FLOW` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SHIELD_POSITION` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SHIELD_TEMP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SL_SPEED_MAX` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SL_SPEED_MIN` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SL_SPEED_SP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `SOPNAME` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `STATE` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `STATESub` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `STATESub2` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `STEPTOTALRUN_TIME` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `THROTTLE_TARG` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `THROTTLE_TARG_SP` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `TOTALRUN_TIME` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `VERSION` VARCHAR(256) COMPRESS 'zstd' LEVEL 'high',
+  `inner_furnace_no` VARCHAR(64) COMPRESS 'zstd' LEVEL 'high',
+  `inner_crystal_no` VARCHAR(64) COMPRESS 'zstd' LEVEL 'high',
+  `is_first` TINYINT COMPRESS 'zstd' LEVEL 'high',
+  `CAMERADIA` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `PRESSURE` FLOAT COMPRESS 'zstd' LEVEL 'high',
+  `R_CROWN_DIA_SP` FLOAT COMPRESS 'zstd' LEVEL 'high'
+) TAGS (`device_id` VARCHAR(64), `device_ip` VARCHAR(64)) SMA(`ts`,`HEART_DATETIME`);

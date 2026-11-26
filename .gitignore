@@ -30,3 +30,14 @@ __pycache__/
 /kx-opc-web/web/node_modules/
 /kx-opc-web/internal/web/dist/*
 !/kx-opc-web/internal/web/dist/.gitkeep
+
+# Intermediate schema audit reports (source snapshot is retained)
+/tools/schema/schema_diff.json
+/tools/schema/schema_check_current.json
+
+# Runtime caches, logs and frontend dependencies
+**/cache/
+**/logs/
+**/node_modules/
+*.log
+*.gob

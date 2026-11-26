@@ -208,7 +208,7 @@ func defaults() Config {
 		},
 		Crystal: Crystal{
 			CrystalColumn: "inner_crystal_no", FurnaceColumn: "inner_furnace_no", FirstColumn: "is_first",
-			StepColumn: "STATE", GapLimit: time.Minute, LedgerTable: "inner_crystal_info", FurnaceTable: "inner_furnace_info", ListDays: []int{7, 30, 90}, MaxRange: 31 * 24 * time.Hour,
+			StepColumn: "STATE", GapLimit: time.Minute, LedgerTable: "opc_inner_crystal_info", FurnaceTable: "opc_inner_furnace_info", ListDays: []int{7, 30, 90}, MaxRange: 31 * 24 * time.Hour,
 		},
 		Monitor: Monitor{
 			Interval:         5 * time.Second,

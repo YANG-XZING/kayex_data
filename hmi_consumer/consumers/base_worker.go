@@ -13,7 +13,7 @@ import (
 )
 
 // dbDownPollInterval DB 不可达时的探活轮询间隔（此期间队列阻塞，等待 DB 恢复，绝不丢数据）
-const dbDownPollInterval = 5 * time.Second
+var dbDownPollInterval = config.DBRetry
 
 // dbReachable 轻量探活：判断 TDengine 是否可达。
 // 用于区分两类写入失败：DB 可达 → 数据本身有问题(脏数据)；DB 不可达 → 基础设施故障。
@@ -107,7 +107,7 @@ func StartBaseWorker(ctx context.Context, wg *sync.WaitGroup, qName string, stab
 			continue
 		}
 
-		_ = ch.Qos(10, 0, false)
+		_ = ch.Qos(config.Prefetch, 0, false)
 
 		// 3. 开启消费
 		msgs, err := ch.Consume(qName, "", false, false, false, false, nil)

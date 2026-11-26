@@ -1,9 +1,0 @@
-/dist/
-logs/
-*.log
-*.exe
-node_modules/
-# 前端打包结果由 scripts/build.sh 生成，只保留占位文件供 go:embed
-/internal/web/dist/*
-!/internal/web/dist/.gitkeep
-cache/

@@ -10,7 +10,7 @@ accounts:
 session_ttl: 12h                    # 登录多久后要重新登录
 
 tdengine:
-  dsn: "root:taosdata@ws(10.65.104.171:6041)/kx_opc"  # taosWS 连接串（经 taosAdapter 6041 端口），库名为采集数据所在的库
+  dsn: "root:taosdata@ws(10.65.104.171:6041)/kayex_data"  # taosWS 连接串（经 taosAdapter 6041 端口），库名为采集数据所在的库
   super_table: opc_data             # kx-opc-client 写入的超级表
   max_conns: 8                      # 最多同时打开的连接数
   # 网站自己的表（opc_point_info 点位信息、web_alarm 告警）和采集数据在同一个库，启动时自动创建；每一列都带这个压缩
@@ -40,14 +40,15 @@ alarm:
   history_max_range: 744h           # 告警记录一次最多查 31 天
   record: true                      # 写入 web_alarm；只能有一个实例写，本机调试连同一个库时改成 false
 
+# OPC 台账本次不初始化；保留界面，后续补齐字段及处理程序后再启用数据。
 # 晶棒数据导出：用 kx-inner-processor 补写的晶编号 / 炉次号和晶棒台账，整棒或按工步导出 opc_data
 crystal:
   crystal_column: inner_crystal_no  # 晶编号列
   furnace_column: inner_furnace_no  # 炉次号列
   first_column: is_first            # 是否首棒列
   step_column: STATE                # 工步号列
-  ledger_table: inner_crystal_info  # 晶棒台账（与采集数据同库）
-  furnace_table: inner_furnace_info # 炉次台账：每一炉的熔料 / 预热准备 / 预热熔接时间
+  ledger_table: opc_inner_crystal_info  # 晶棒台账（与采集数据同库）
+  furnace_table: opc_inner_furnace_info # 炉次台账：每一炉的熔料 / 预热准备 / 预热熔接时间
   list_days: [7, 30, 90]            # 页面上可选的“最近多少天”
   max_range: 744h                   # 一次最多导出 31 天
   # 工步号（STATE，一位小数）的名称；sub: true 为子工步。没列出的显示为“工步 N”

@@ -2,6 +2,7 @@ package consumers
 
 import (
 	"fmt"
+	"hmi1.1_consumer/config"
 	"strings"
 	"time"
 
@@ -56,7 +57,7 @@ func HandleRecordPacket(body []byte, stableName string) error {
 	}
 
 	// 4. 分批次构造并执行插入语句（防止单个 SQL 语句超长报错）
-	const batchSize = 100 // 每次最多写入 100 条记录
+	batchSize := config.BatchSize // 每次最多写入 100 条记录
 	totalRecords := len(recordArray)
 
 	for batchStart := 0; batchStart < totalRecords; batchStart += batchSize {

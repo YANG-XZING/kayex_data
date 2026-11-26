@@ -14,11 +14,11 @@ import (
 	"hmi1.1_consumer/logx"
 )
 
-const (
+var (
 	// retention 保留时长：仅保留最近一个月(30 天)内的 SOP 文件，更早的删除。
-	retention = 30 * 24 * time.Hour
+	retention = config.SOPRetention
 	// scanInterval 清理任务的执行间隔：每 24 小时扫描一次。
-	scanInterval = 24 * time.Hour
+	scanInterval = config.SOPScanInterval
 )
 
 // Start 启动 SOP 文件定时清理协程：启动时先清一次，之后每 scanInterval 清一次。

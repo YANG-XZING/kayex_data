@@ -585,34 +585,29 @@ import (
 // ============================================================================
 // 1. 系统常量配置
 // ============================================================================
-const (
-	MQURL           = "amqp://admin:rabbitmq@10.65.104.172:5672/"
-	NormalQueueName = "dbcenter.plc.direct" // 实时数据队列
-	PatchQueueName  = "dbcenter.plc.sqlite" // 补发数据队列
-	PrefetchCount   = 2000                  // MQ 预取限制：≈ WorkerCount×BatchPerWorker，保证 Worker 有活干又不至于
+var (
+	PrefetchCount = deploymentInt("PLC_PREFETCH", 2000) // MQ 预取限制：≈ WorkerCount×BatchPerWorker，保证 Worker 有活干又不至于
 	//                                         一次性挂太多未 Ack 消息（挂太多会触发 broker 的 consumer_timeout 掐通道）
 
-	TaosDSN = "root:taosdata@ws(10.65.104.171:6041)/kayex_data" // 数据库连接地址
+	DBName           = "kayex_data"                                    // 库名
+	SuperTableName   = deploymentString("PLC_STABLE", "dbcenter_data") // 超级表名
+	ChildTablePrefix = deploymentString("PLC_TABLE_PREFIX", "dc_")     // 子表前缀
 
-	DBName           = "kayex_data"    // 库名
-	SuperTableName   = "dbcenter_data" // 超级表名
-	ChildTablePrefix = "dc_"           // 子表前缀
-
-	WorkerCount    = 20 // 并发处理协程数
-	BatchPerWorker = 10 // 攒批大小：满10个消息包才触发一次写入。调大=单条 INSERT 携带更多行、
+	WorkerCount    = deploymentInt("PLC_WORKERS", 20)    // 并发处理协程数
+	BatchPerWorker = deploymentInt("PLC_BATCH_SIZE", 10) // 攒批大小：满10个消息包才触发一次写入。调大=单条 INSERT 携带更多行、
 	//                                         DB 往返次数大幅减少，是提吞吐、排积压的最主要杠杆（TDengine 尤其吃大批量写入）
-	MaxWaitTime   = 500 * time.Millisecond // 强制写入阈值：即使没攒够包，500ms后也执行写入（保证低峰期时延）
-	WorkerChanBuf = 200                    // 每个 Worker 入口 channel 缓冲：给一点缓冲避免分发协程阻塞即可；
+	MaxWaitTime   = deploymentDuration("PLC_MAX_WAIT", 500*time.Millisecond) // 强制写入阈值：即使没攒够包，500ms后也执行写入（保证低峰期时延）
+	WorkerChanBuf = deploymentInt("PLC_WORKER_BUFFER", 200)                  // 每个 Worker 入口 channel 缓冲：给一点缓冲避免分发协程阻塞即可；
 	//                                         不宜过大——太大=大量消息在内存里挂着迟迟不 Ack，会撞 broker 的 ack 超时
-	MaxOpenConns = 500 // DB最大连接数
-	MaxIdleConns = 200 // DB最大空闲连接数
+	MaxOpenConns = deploymentInt("PLC_MAX_OPEN_CONNS", 500) // DB最大连接数
+	MaxIdleConns = deploymentInt("PLC_MAX_IDLE_CONNS", 200) // DB最大空闲连接数
 
 	// 韧性相关：给每次 DB 操作加超时，避免 taosadapter/taosd 假死时 db.Exec 无限阻塞导致 Worker 僵死。
-	DBOpTimeout = 10 * time.Second // 单次 DB 操作(Exec/Ping/Query)超时
-	DBDownRetry = 5 * time.Second  // DB 不可用时的原地重试间隔
+	DBOpTimeout = deploymentDuration("PLC_DB_TIMEOUT", 10*time.Second) // 单次 DB 操作(Exec/Ping/Query)超时
+	DBDownRetry = deploymentDuration("PLC_DB_RETRY", 5*time.Second)    // DB 不可用时的原地重试间隔
 
 	// 内部炉次号/晶编号相关的工步号来源点位
-	StateNoPath = "33.0-0" // 工步号 STATE_NO -> 数据库列 f_33_0_0
+	StateNoPath = deploymentString("PLC_STATE_POINT", "33.0-0") // 工步号 STATE_NO -> 数据库列 f_33_0_0
 )
 
 // ============================================================================
@@ -753,8 +748,8 @@ func ensureInnerColumns() {
 		col string
 		sql string
 	}{
-		{"inner_furnace_no", fmt.Sprintf("ALTER STABLE %s.%s ADD COLUMN inner_furnace_no NCHAR(64)", DBName, SuperTableName)},
-		{"inner_crystal_no", fmt.Sprintf("ALTER STABLE %s.%s ADD COLUMN inner_crystal_no NCHAR(64)", DBName, SuperTableName)},
+		{"inner_furnace_no", fmt.Sprintf("ALTER STABLE %s.%s ADD COLUMN inner_furnace_no NCHAR(64) COMPRESS 'zstd' LEVEL 'high'", DBName, SuperTableName)},
+		{"inner_crystal_no", fmt.Sprintf("ALTER STABLE %s.%s ADD COLUMN inner_crystal_no NCHAR(64) COMPRESS 'zstd' LEVEL 'high'", DBName, SuperTableName)},
 	}
 	for _, d := range ddls {
 		if err := execCtx(d.sql); err != nil {
