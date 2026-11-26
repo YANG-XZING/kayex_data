@@ -32,7 +32,7 @@ class App:
   notebook=ttk.Notebook(wrap);notebook.pack(fill='both',expand=True,pady=8)
   selection=ttk.Frame(notebook,padding=16);notebook.add(selection,text='① 选择组件')
   for i,(name,label) in enumerate(LABELS.items()):
-   group=ttk.LabelFrame(selection,text=name,padding=14);group.grid(row=i//2,column=i%2,sticky='nsew',padx=8,pady=8)
+   group=ttk.LabelFrame(selection,text=package.APP_NAMES.get(name,name),padding=14);group.grid(row=i//2,column=i%2,sticky='nsew',padx=8,pady=8)
    ttk.Checkbutton(group,text=label,variable=self.selected[name]).pack(anchor='w')
   selection.columnconfigure(0,weight=1);selection.columnconfigure(1,weight=1)
   actions=ttk.Frame(selection);actions.grid(row=3,column=0,columnspan=2,sticky='w',padx=8,pady=12)

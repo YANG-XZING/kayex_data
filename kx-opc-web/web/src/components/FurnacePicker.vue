@@ -83,7 +83,7 @@ function onKey(e) {
 
     <div v-if="open" class="mask" @click="open = false"></div>
     <div v-if="open" class="pop card">
-      <input ref="input" v-model="query" class="input" placeholder="炉台号或 IP，如 BB012、10.65.111.12"
+      <input ref="input" v-model="query" class="input" placeholder="炉台号或 IP，如 A061、172.30.3.61"
         @keydown="onKey" @input="resetActive" />
       <div class="areas">
         <button :class="{ on: !area }" @click="chooseArea('')">全部 {{ state.furnaces.length }}</button>

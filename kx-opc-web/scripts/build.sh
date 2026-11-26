@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-$(date +%Y%m%d%H%M)}"
-NAME="kx-opc-web-${VERSION}-linux-amd64"
+NAME="kx_opc_web-${VERSION}-linux-amd64"
 OUT="$ROOT/dist/$NAME"
 
 # 前端打包到 internal/web/dist，随后由 go:embed 嵌入程序；先清掉旧的打包结果，否则旧文件也会被嵌进程序
@@ -19,7 +19,7 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 # CGO_ENABLED=0：纯静态二进制，不依赖 glibc 版本，CentOS 7 可直接运行
 (cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-  -o "$OUT/kx-opc-web" ./cmd/kx-opc-web)
+  -o "$OUT/kx_opc_web" ./cmd/kx-opc-web)
 
 cp "$ROOT/configs/config.yaml" "$OUT/"
 cp -r "$ROOT/deploy" "$ROOT/sql" "$OUT/"

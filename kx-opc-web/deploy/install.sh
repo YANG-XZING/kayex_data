@@ -5,14 +5,25 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR=/opt/kx-opc-web
-SERVICE=kx-opc-web
+APP_DIR=/opt/kx_opc_web
+SERVICE=kx_opc_web
+LEGACY_SERVICE=kx-opc-web
+LEGACY_DIR=/opt/kx-opc-web
+if systemctl cat "$LEGACY_SERVICE.service" >/dev/null 2>&1; then
+  systemctl stop "$LEGACY_SERVICE.service"
+  systemctl disable "$LEGACY_SERVICE.service" 2>/dev/null || true
+fi
 
 id kxopc >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin kxopc
 mkdir -p "$APP_DIR/logs"
+for old_config in config.yaml furnaces.json; do
+  if [[ ! -f "$APP_DIR/$old_config" && -f "$LEGACY_DIR/$old_config" ]]; then
+    cp -p "$LEGACY_DIR/$old_config" "$APP_DIR/$old_config"
+  fi
+done
 systemctl stop "$SERVICE" 2>/dev/null || true
 
-install -m 0755 "$SRC/kx-opc-web" "$APP_DIR/kx-opc-web"
+install -m 0755 "$SRC/kx_opc_web" "$APP_DIR/kx_opc_web"
 if [[ -f "$APP_DIR/config.yaml" ]]; then
   BAK="$APP_DIR/config.yaml.bak.$(date +%Y%m%d%H%M%S)"
   cp -p "$APP_DIR/config.yaml" "$BAK"

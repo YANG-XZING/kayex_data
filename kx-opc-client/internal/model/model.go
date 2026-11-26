@@ -24,7 +24,7 @@ const DefaultDeviceName = "3G14"
 type Furnace struct {
 	IP   string // 写入 TDengine 标签 device_ip
 	Port int    // OPC UA 端口
-	// AreaDeviceID 按 furnaces.json 网段前缀规则得到的炉台号（区号 + IP 最后一段，如 A12），没有匹配的网段时为空
+	// AreaDeviceID 按 furnaces.json IP 范围得到的备用炉台号（区号 + 三位 IP 尾号，如 A061），未命中分区时为空
 	AreaDeviceID string
 	// DeviceID 炉台号，写入 TDengine 标签 device_id；连上服务端后确定（规则见 collector.resolveDeviceID）
 	DeviceID string

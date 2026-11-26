@@ -182,11 +182,11 @@ func (c *Collector) session(ctx context.Context) (bool, error) {
 }
 
 // resolveDeviceID 确定炉台号，返回来源：优先用上位机配置的设备名（服务端上报）；上位机为默认值 3G14（没有配置）时，
-// 有 furnaces.json 网段前缀的用前缀规则，没有的就用 3G14（子表和 device_ip 按 IP 区分，炉台号重复不影响）。
+// 有 furnaces.json IP 范围分区的用分区规则，没有的就用 3G14（子表和 device_ip 按 IP 区分，炉台号重复不影响）。
 func (c *Collector) resolveDeviceID(deviceName string) string {
 	id, source := deviceName, "上位机"
 	if (deviceName == "" || deviceName == model.DefaultDeviceName) && c.furnace.AreaDeviceID != "" {
-		id, source = c.furnace.AreaDeviceID, "网段前缀"
+		id, source = c.furnace.AreaDeviceID, "IP 范围分区"
 	}
 	if id == "" { // 服务端没有上报应用名（极少见）
 		id, source = c.furnace.IP, "IP"

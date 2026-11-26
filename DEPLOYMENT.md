@@ -50,3 +50,38 @@ VGROUPS=20、BUFFER=256 沿用现场参数；新库 WAL_LEVEL=2，现场源库�
 两张 PLC 台账只提供源结构，当前项目没有它们的独立维护程序；硬件表同样需要对应数据来源。
 
 TDengine 和 RabbitMQ 的详细安装步骤分别见安装包文件夹里的 `TDengine安装流程.md` 和 `RabbitMQ安装流程.md`；生成的对应安装包也包含这两份说明。
+
+## 统一业务数据库
+
+OPC 采集、PLC/HMI 消费、点位配置和告警都使用 kayex_data。opc_data 是 kayex_data 中的超级表，不是另一个数据库。
+Web 的 extract.database、hmi.database 同样为 kayex_data；硬件查询按现有配置继续访问 sop_hardware.station_info。
+默认配置和 profiles 中的现场配置使用 kayex_data，本次不增加强制库名校验。重新打包部署后生效；已有安装的现场 config.yaml/service.env 仍需更新并重启。
+本次不搬运旧库数据、不删除旧库。升级安装器会保留原配置并生成 .new 文件，请核对并应用新配置。
+
+## LC 默认现场配置
+
+OPC 默认范围为 172.30.3.61–65（5 台）和 172.30.3.71–130（60 台），端口 4840，总计 65 台；LC 站点内，Web 和采集端按上述范围分别划为 A 区、B 区。
+炉台名优先采用 OPC 服务端上报的设备名；为空或默认 3G14 时，客户端按 IP 所属区生成三位编号，如 A061、B071。
+Web 默认登录名为 kayexAdmin（管理员）和 Admin（客户），密码沿用原配置。
+默认外置配置已同步；后续更换 TD/MQ 地址和连接凭据，只需在 profiles/site/settings.json 修改 td_dsn、mq_url。
+OPC/Web 的 TD 配置引用共用 TD_DSN，两个 consumer 的 environment.json 同样引用共用连接。业务库默认 kayex_data，Web 硬件查询保持 sop_hardware.station_info。
+
+## 同网段范围分区
+
+OPC 的 furnaces.json 和 Web 的 config.yaml 都使用 from、to、area 字段，起止 IP 包含在内，不再使用 prefix 整网段规则。两边配置要一致，范围不能重叠。
+A 区：172.30.3.61–172.30.3.65；B 区：172.30.3.71–172.30.3.130。66–70 等未配置地址在 Web 显示为“其他”，不会自动加入 OPC 采集清单。
+修改分区后重新打包、部署客户端与 Web，并应用新配置后重启；旧 prefix 配置不适用于本版。
+
+## 程序与服务命名
+
+| 组件 | 程序 / systemd 服务名 | 默认安装目录 |
+|---|---|---|
+| PLC 消费 | kx_bigdata_consumer | /opt/kx_bigdata_consumer |
+| HMI 消费 | kx_hmi_consumer | /opt/kx_hmi_consumer |
+| OPC 客户端 | kx_opc_client | /opt/kx_opc_client |
+| Web 网站 | kx_opc_web | /opt/kx_opc_web |
+
+安装包和二进制使用上述新名称；源码目录、外置配置子目录保留现有名称，打包器负责映射。
+例如启动 Web：`sudo systemctl start kx_opc_web`；查看日志：`journalctl -u kx_opc_web -f`。
+升级安装器会停止并禁用对应旧服务，保留旧安装目录，并将已有现场配置复制到新目录（已有新配置时保留）。新包配置另存为 .new，需核对分区格式后应用。
+新服务安装后不自动启动，避免旧配置未更新时立即采集。持久化暂存目录保持原配置，RabbitMQ、TDengine 服务名不变。

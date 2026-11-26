@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=kxopc
 Group=kxopc
-WorkingDirectory=/opt/kx-opc-client
-ExecStart=/opt/kx-opc-client/kx-opc-client -config /opt/kx-opc-client/config.yaml
+WorkingDirectory=/opt/kx_opc_client
+ExecStart=/opt/kx_opc_client/kx_opc_client -config /opt/kx_opc_client/config.yaml
 Environment=TZ=Asia/Shanghai
 Restart=always
 RestartSec=10

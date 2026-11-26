@@ -4,11 +4,12 @@
 // 也可以直接输入清单里没有的 IP。
 import { ref, computed, nextTick } from 'vue'
 import Icon from './Icon.vue'
+import { areaOf as rangeAreaOf } from '../areas.js'
 
 const props = defineProps({
   modelValue: String,
   devices: Array, // [{ id, ip }]
-  areas: Array, // [{ prefix, area }]，网段前缀 -> 区号
+  areas: Array, // [{ from, to, area }]，IPv4 起止范围 -> 区号
   loading: Boolean,
 })
 const emit = defineEmits(['update:modelValue'])
@@ -18,11 +19,11 @@ const query = ref('')
 const area = ref('') // 只看某个区，空为全部
 const input = ref(null)
 
-const areaOf = (ip) => (props.areas || []).find((a) => ip.startsWith(a.prefix))?.area || '其他'
+const areaOf = (ip) => rangeAreaOf(ip, props.areas)
 const current = computed(() => props.devices.find((d) => d.ip === props.modelValue))
 // 按区分组，区的顺序与配置一致，“其他”放最后
 const groups = computed(() => {
-  const order = [...new Set((props.areas || []).map((a) => a.area)), '其他']
+  const order = [...new Set([...(props.areas || []).map((a) => a.area), '其他'])]
   const m = new Map(order.map((a) => [a, []]))
   for (const d of props.devices) m.get(areaOf(d.ip)).push(d)
   return order.map((a) => ({ area: a, list: m.get(a) })).filter((g) => g.list.length)
@@ -67,7 +68,7 @@ function onKey(e) {
     </button>
     <div v-if="open" class="mask" @click="open = false"></div>
     <div v-if="open" class="pop card">
-      <input ref="input" v-model="query" class="input" placeholder="设备号或 IP，如 BB012、10.65.111.12；回车选第一个" @keydown="onKey" />
+      <input ref="input" v-model="query" class="input" placeholder="设备号或 IP，如 A061、172.30.3.61；回车选第一个" @keydown="onKey" />
       <div class="areas">
         <button :class="{ on: !area }" @click="area = ''">全部 <span>{{ devices.length }}</span></button>
         <button v-for="g in groups" :key="g.area" :class="{ on: area === g.area }" @click="area = g.area">

@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath
 from datetime import datetime
 ROOT=Path(__file__).resolve().parents[1]
 APPS={'bigdata_consumer':'.','hmi_consumer':'.','kx-opc-client':'./cmd/kx-opc-client','kx-opc-web':'./cmd/kx-opc-web'}
+APP_NAMES={'bigdata_consumer':'kx_bigdata_consumer','hmi_consumer':'kx_hmi_consumer','kx-opc-client':'kx_opc_client','kx-opc-web':'kx_opc_web'}
 COMPONENTS=list(APPS)+['tdengine','rabbitmq']
 ENV_DEFAULTS={
 'bigdata_consumer':{'MQ_URL':'${MQ_URL}','TD_DSN':'${TD_DSN}','PLC_QUEUE':'dbcenter.plc.direct','PLC_PATCH_QUEUE':'dbcenter.plc.sqlite','PLC_STABLE':'dbcenter_data','PLC_TABLE_PREFIX':'dc_','PLC_STATE_POINT':'33.0-0','PLC_PREFETCH':'2000','PLC_WORKERS':'20','PLC_BATCH_SIZE':'10','PLC_WORKER_BUFFER':'200','PLC_MAX_OPEN_CONNS':'500','PLC_MAX_IDLE_CONNS':'200','PLC_MAX_WAIT':'500ms','PLC_DB_TIMEOUT':'10s','PLC_DB_RETRY':'5s'},
@@ -52,7 +53,8 @@ def init_profile(profile):
 
 
 def selection(raw):
- values=list(dict.fromkeys(raw.split(',')))
+ aliases={name:key for key,name in APP_NAMES.items()}
+ values=list(dict.fromkeys(aliases.get(value,value) for value in raw.split(',')))
  if not values or any(x not in COMPONENTS for x in values):raise ValueError('请勾选有效组件')
  return values
 
@@ -116,11 +118,11 @@ def load_profile(profile,selected):
 
 
 def service(app,settings):
- base=settings['install_base']+'/'+app;user=settings['service_user']
+ name=APP_NAMES[app];base=settings['install_base']+'/'+name;user=settings['service_user']
  suffix=' -config '+base+'/config.yaml' if app.startswith('kx-opc-') else ''
  environment='EnvironmentFile='+base+'/service.env\n' if not suffix else ''
  return f"""[Unit]
-Description=Kayex {app}
+Description=Kayex {name}
 After=network-online.target
 Wants=network-online.target
 [Service]
@@ -128,7 +130,7 @@ Type=simple
 User={user}
 Group={user}
 WorkingDirectory={base}
-ExecStart={base}/{app}{suffix}
+ExecStart={base}/{name}{suffix}
 {environment}Environment=TZ=Asia/Shanghai
 Restart=on-failure
 RestartSec=10
@@ -141,18 +143,31 @@ WantedBy=multi-user.target
 
 
 def installer(app,settings,dirs):
- user=settings['service_user'];base=settings['install_base'];directories=' '.join("'"+safe_path(x)+"'" for x in dirs+[base+'/'+app+'/logs'])
+ name=APP_NAMES[app];user=settings['service_user'];base=settings['install_base'];directories=' '.join("'"+safe_path(x)+"'" for x in dirs+[base+'/'+name+'/logs'])
  return f"""#!/usr/bin/env bash
 set -euo pipefail
 [[ $EUID -eq 0 ]] || {{ echo '请使用 sudo bash install.sh'; exit 1; }}
 SRC="$(cd "$(dirname "$0")" && pwd)"
-APP='{app}'
-DEST='{base}/{app}'
+APP='{name}'
+DEST='{base}/{name}'
+LEGACY_APP='{app}'
+LEGACY_DEST='{base}/{app}'
 USER_NAME='{user}'
 getent group "$USER_NAME" >/dev/null || groupadd --system "$USER_NAME"
 id "$USER_NAME" >/dev/null 2>&1 || useradd --system --gid "$USER_NAME" --no-create-home --shell /sbin/nologin "$USER_NAME"
 install -d -m 0750 -o "$USER_NAME" -g "$USER_NAME" "$DEST" "$DEST/logs" "$DEST/cache"
 STAMP="$(date +%Y%m%d%H%M%S)-$$"
+# Renaming must not leave the old collector/website running alongside the new service.
+if systemctl cat "$LEGACY_APP.service" >/dev/null 2>&1; then
+ systemctl stop "$LEGACY_APP.service"
+ systemctl disable "$LEGACY_APP.service" 2>/dev/null || true
+fi
+# Carry forward the existing site configuration; the new defaults are saved as .new below.
+for old_config in config.yaml furnaces.json service.env; do
+ if [[ ! -f "$DEST/$old_config" && -f "$LEGACY_DEST/$old_config" ]]; then
+  install -m 0640 -o root -g "$USER_NAME" "$LEGACY_DEST/$old_config" "$DEST/$old_config"
+ fi
+done
 if systemctl is-active --quiet "$APP"; then systemctl stop "$APP"; fi
 if [[ -f "$DEST/$APP" ]]; then cp -p "$DEST/$APP" "$DEST/$APP.bak.$STAMP"; fi
 install -m 0755 "$SRC/app/$APP" "$DEST/$APP"
@@ -211,7 +226,7 @@ def archive_stage(stage,output,manifest):
    for p in sorted(stage.rglob('*')):
     info=archive.gettarinfo(str(p),arcname=stage.name+'/'+p.relative_to(stage).as_posix())
     info.uid=info.gid=0;info.uname=info.gname='root'
-    info.mode=0o755 if p.is_dir() or p.name in APPS or p.suffix=='.sh' else 0o600 if p.suffix in ('.env','.yaml','.cfg','.conf') else 0o644
+    info.mode=0o755 if p.is_dir() or p.name in APP_NAMES.values() or p.suffix=='.sh' else 0o600 if p.suffix in ('.env','.yaml','.cfg','.conf') else 0o644
     if p.is_file():
      with p.open('rb') as f:archive.addfile(info,f)
     else:archive.addfile(info)
@@ -228,12 +243,13 @@ def make_bundle(profile,version,output,selected):
  if not re.fullmatch(r'[A-Za-z0-9_.-]+',version):raise ValueError('版本号只支持字母、数字、点、下划线、连字符')
  output.mkdir(parents=True,exist_ok=True)
  for name in selected:
-  if (output/(name+'-'+version+'-linux-amd64.tar.gz')).exists():raise ValueError('已有同版本安装包，请修改版本号')
+  if (output/(APP_NAMES.get(name,name)+'-'+version+'-linux-amd64.tar.gz')).exists():raise ValueError('已有同版本安装包，请修改版本号')
  env=os.environ.copy();env.update(GOOS='linux',GOARCH='amd64',CGO_ENABLED='0')
  with tempfile.TemporaryDirectory(prefix='kayex-build-') as temp:
   work=Path(temp)
   for component in selected:
-   print('正在打包：'+component,flush=True);stage=work/(component+'-'+version+'-linux-amd64');stage.mkdir()
+   name=APP_NAMES.get(component,component)
+   print('正在打包：'+name,flush=True);stage=work/(name+'-'+version+'-linux-amd64');stage.mkdir()
    if component in APPS:
     src=ROOT/component
     if component=='kx-opc-web':
@@ -243,7 +259,7 @@ def make_bundle(profile,version,output,selected):
      run([npm,'ci','--no-audit','--no-fund'],src/'web');run([npm,'run','build'],src/'web')
     appdir=stage/'app';appdir.mkdir()
     flags='-s -w'+(' -X main.version='+version if component.startswith('kx-opc-') else '')
-    run(['go','build','-trimpath','-ldflags',flags,'-o',str(appdir/component),APPS[component]],src,env)
+    run(['go','build','-trimpath','-ldflags',flags,'-o',str(appdir/name),APPS[component]],src,env)
     dirs=[]
     if component in ENV_DEFAULTS:
      write(appdir/'service.env',''.join(k+'='+json.dumps(v,ensure_ascii=False)+'\n' for k,v in configs[component].items()))
@@ -254,7 +270,7 @@ def make_bundle(profile,version,output,selected):
       import yaml
       dirs=[yaml.safe_load(configs[component])['tdengine']['spool_dir']]
       shutil.copyfile(profile/component/'furnaces.json',appdir/'furnaces.json')
-    write(stage/(component+'.service'),service(component,settings));write(stage/'install.sh',installer(component,settings,dirs))
+    write(stage/(name+'.service'),service(component,settings));write(stage/'install.sh',installer(component,settings,dirs))
    elif component=='tdengine':
     shutil.copyfile(ROOT/'td和mq安装包/tdengine-tsdb-oss-3.4.0.9-linux-x64.tar.gz',stage/'tdengine-tsdb-oss-3.4.0.9-linux-x64.tar.gz')
     shutil.copytree(ROOT/'td初始化',stage/'sql');db=configs[component]
@@ -267,7 +283,7 @@ def make_bundle(profile,version,output,selected):
    if component in ('tdengine','rabbitmq'):
     guide='TDengine安装流程.md' if component=='tdengine' else 'RabbitMQ安装流程.md'
     shutil.copyfile(ROOT/'td和mq安装包'/guide,stage/guide)
-   manifest={'component':component,'version':version,'platform':'linux/amd64','built_at':datetime.now().astimezone().isoformat(),'schema_source':'171 / 3.4.0.9','manual_sql_excludes_opc_tables':True}
+   manifest={'component':name,'source_component':component,'version':version,'platform':'linux/amd64','built_at':datetime.now().astimezone().isoformat(),'schema_source':'171 / 3.4.0.9','manual_sql_excludes_opc_tables':True}
    archive_stage(stage,output,manifest)
 
 

@@ -5,8 +5,8 @@ listen: ":8700"                     # 网站端口
 # 登录账户（为空则不需要登录，所有人都按内部账户）。role：admin 内部账户，全部功能；
 # customer 客户，只看“上位机数据”（配置信息 → 客户可见点位里勾选的点位）和“上位机记录”，全部炉台
 accounts:
-  - { user: KayexAdmin, password: "Kayex123", role: admin }
-  - { user: Admin,      password: "1",        role: customer }
+  - {"user": "kayexAdmin", "password": "Kayex123", "role": "admin"}
+  - {"user": "Admin", "password": "1", "role": "customer"}
 session_ttl: 12h                    # 登录多久后要重新登录
 
 tdengine:
@@ -154,14 +154,10 @@ clock:
   http_urls: ["https://www.aliyun.com", "https://www.baidu.com"]  # NTP 都不通时用响应头的 Date（精确到秒）
   sync_interval: 5m
 
-# 网段前缀 → 区号，用于按区筛选炉台（与 kx-opc-client 的 furnaces.json 一致）
+# 按 IPv4 起止范围分区：A 区 5 台、B 区 60 台，端点包含在内
 areas:
-  - { prefix: "10.65.108.", area: "A" }
-  - { prefix: "10.65.109.", area: "AA" }
-  - { prefix: "10.65.110.", area: "B" }
-  - { prefix: "10.65.111.", area: "BB" }
-  - { prefix: "10.65.104.", area: "C" }
-  - { prefix: "10.65.105.", area: "CC" }
+  - {"from": "172.30.3.61", "to": "172.30.3.65", "area": "A"}
+  - {"from": "172.30.3.71", "to": "172.30.3.130", "area": "B"}
 
 log:
   level: info                       # debug / info / warn / error

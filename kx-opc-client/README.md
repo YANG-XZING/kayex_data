@@ -65,7 +65,7 @@ furnaces.json ──► 每台炉台一个采集协程 ──► 分发 ──�
 ## TDengine 表结构
 
 ```
-kx_opc                          ← 库，不存在时程序按 database_options 自动创建
+kayex_data                          ← 库，不存在时程序按 database_options 自动创建
 └── opc_data                    ← 超级表，程序自动创建
     ├── opc_10_65_108_12        ← 每台炉台一张子表，首次写入时自动创建
     └── ...
@@ -79,8 +79,8 @@ kx_opc                          ← 库，不存在时程序按 database_options
 | `device_ip` | 标签 VARCHAR(64) | 炉台 IP |
 
 - **不需要提前建库建表**。DBA 想手工建的话可以参考 `sql/tdengine/opc_data.sql`。
-- **每一列都带压缩选项**：建表时的 `ts`、心跳列，以及之后自动添加的每个点位列，都带 `COMPRESS 'zstd' LEVEL 'high'`（`config.yaml` 的 `compress`、`compress_level` 可改）。启动时如果发现已有列的压缩方式和配置不一致，会自动 `ALTER STABLE ... MODIFY COLUMN ... COMPRESS ...` 改过来；改压缩只影响之后落盘的数据，已有数据要执行一次 `COMPACT DATABASE kx_opc` 才会重新压缩。标签不支持列压缩。
-- **建库参数**（`database_options`，只在库不存在时生效）：`MAXROWS 40000 MINROWS 1000` 让数据块尽量大、压缩率更高，`KEEP 1095d` 保留 3 年。
+- **每一列都带压缩选项**：建表时的 `ts`、心跳列，以及之后自动添加的每个点位列，都带 `COMPRESS 'zstd' LEVEL 'high'`（`config.yaml` 的 `compress`、`compress_level` 可改）。启动时如果发现已有列的压缩方式和配置不一致，会自动 `ALTER STABLE ... MODIFY COLUMN ... COMPRESS ...` 改过来；改压缩只影响之后落盘的数据，已有数据要执行一次 `COMPACT DATABASE kayex_data` 才会重新压缩。标签不支持列压缩。
+- **建库参数**（`database_options`，只在库不存在时生效）：`MAXROWS 40000 MINROWS 1000` 让数据块尽量大、压缩率更高，`KEEP 365d` 保留 1 年。
 - **列名区分大小写**：建列和写入时列名都用反引号包裹，查询时也要用反引号，比如 `` SELECT `HEART_DATETIME` FROM ... ``。
 - **列类型按 OPC 节点类型建**（即服务端 `HMI_Value.XML` 里的 `type`），值按原类型写入，数值列可以直接计算：
 
@@ -106,7 +106,7 @@ kx_opc                          ← 库，不存在时程序按 database_options
 
 ## 配置
 
-一共两个文件，都在 `/opt/kx-opc-client/` 下。
+一共两个文件，都在 `/opt/kx_opc_client/` 下。
 
 **`furnaces.json`：要采集的炉台，没配置到的 IP 一律不连。**
 
@@ -114,15 +114,22 @@ kx_opc                          ← 库，不存在时程序按 database_options
 {
   "port": 4840,
   "areas": [
-    { "prefix": "10.65.108.", "area": "A" },
-    { "prefix": "10.65.104.", "area": "C" }
+    {
+      "from": "172.30.3.61",
+      "to": "172.30.3.65",
+      "area": "A"
+    },
+    {
+      "from": "172.30.3.71",
+      "to": "172.30.3.130",
+      "area": "B"
+    }
   ],
   "furnaces": [
-    "10.65.108.1-254",
-    "10.65.104.20"
+    "172.30.3.61-65",
+    "172.30.3.71-130"
   ],
-  "exclude": [
-  ]
+  "exclude": []
 }
 ```
 
@@ -130,7 +137,7 @@ kx_opc                          ← 库，不存在时程序按 database_options
 |---|---|
 | `furnaces` | 要采集的炉台，两种写法可以混用：<br>**单个 IP**（如 `10.65.104.20`）：一定采集，连不上就一直重连；<br>**IP 范围**（如 `10.65.108.1-254`，只支持最后一段）：只采集范围里 OPC 端口能连通的 IP，连不通的跳过，下次重读清单时再探测 |
 | `exclude` | 不采集的 IP，比如范围里的服务器、交换机。可以不写 |
-| `areas` | 网段前缀规则（可选）：上位机没有配置设备名时，炉台号 = 区号 + IP 最后一段，比如 `10.65.108.12 → A12`。IP 不属于任何区也可以采集 |
+| `areas` | IP 范围分区（可选）：每项填写 `from`、`to`、`area`，端点包含在内且范围不能重叠。上位机未配置名称时按区号 + 三位 IP 尾号生成备用编号，如 `172.30.3.61 → A061` |
 | `port` | 炉台 OPC 端口（服务端 App.config 里的 OpcPort），默认 4840 |
 
 子表名 = `opc_` + IP，比如 `opc_10_65_108_12`。格式错误、单个 IP 重复、单个 IP 又写进了 `exclude`，都会报错并指出是哪一条。范围之间重叠，或者范围包含了单独写出的 IP，会自动去重。
@@ -142,21 +149,21 @@ kx_opc                          ← 库，不存在时程序按 database_options
 **炉台号怎么确定**（连上炉台后确定，按顺序）：
 
 1. **上位机配置的设备名**：服务端 OPC 应用名为 `LintonKXOpcServer_{设备名}`，设备名来自上位机的 `LocalDeviceConfig.dat`；
-2. 上位机上报的是**默认值 `3G14`**（说明上位机缺少配置文件），改用 `areas` 的网段前缀规则；
-3. 上位机是 `3G14`、又没有匹配的网段前缀时，炉台号就用 `3G14`。子表名和 `device_ip` 标签都按 IP 区分，炉台号重复不影响数据区分。
+2. 上位机上报的是**默认值 `3G14`**（说明上位机缺少配置文件），改用 `areas` 的 IP 范围规则；
+3. 上位机是 `3G14`、又没有匹配的 IP 分区时，炉台号就用 `3G14`。子表名和 `device_ip` 标签都按 IP 区分，炉台号重复不影响数据区分。
 
 炉台号变化时（比如上位机补上了配置文件，重连后设备名变了），日志会记一条“炉台号变更”，TD 子表的 `device_id` 标签也会跟着更新。
 
-改完以后先校验（会实际探测一次 IP 范围，列出将要采集的每台炉台的端点、子表名和网段前缀炉台号，不启动采集）：
+改完以后先校验（会实际探测一次 IP 范围，列出将要采集的每台炉台的端点、子表名和分区备用炉台号，不启动采集）：
 
 ```bash
-sudo -u kxopc /opt/kx-opc-client/kx-opc-client -check
+sudo -u kxopc /opt/kx_opc_client/kx_opc_client -check
 ```
 
 新增炉台在下次重读清单时自动生效；想立即生效、或者删掉炉台后要停止采集，就重启服务：
 
 ```bash
-sudo systemctl restart kx-opc-client
+sudo systemctl restart kx_opc_client
 ```
 
 ## 构建与部署
@@ -167,28 +174,28 @@ sudo systemctl restart kx-opc-client
 ./scripts/build.sh 1.0.0
 ```
 
-把生成的 `dist/kx-opc-client-1.0.0-linux-amd64.tar.gz` 拷到 CentOS 7 上，解压：
+把生成的 `dist/kx_opc_client-1.0.0-linux-amd64.tar.gz` 拷到 CentOS 7 上，解压：
 
 ```bash
-tar xzf kx-opc-client-1.0.0-linux-amd64.tar.gz
+tar xzf kx_opc_client-1.0.0-linux-amd64.tar.gz
 ```
 
 安装：
 
 ```bash
-cd kx-opc-client-1.0.0-linux-amd64 && sudo ./deploy/install.sh
+cd kx_opc_client-1.0.0-linux-amd64 && sudo ./deploy/install.sh
 ```
 
-编辑 `/opt/kx-opc-client/furnaces.json`，校验通过后启动：sudo vi /opt/kx-opc-client/furnaces.json  sudo vi /opt/kx-opc-client/config.yaml
+编辑 `/opt/kx_opc_client/furnaces.json`，校验通过后启动：sudo vi /opt/kx_opc_client/furnaces.json  sudo vi /opt/kx_opc_client/config.yaml
 
 ```bash
-sudo systemctl start kx-opc-client
+sudo systemctl start kx_opc_client
 ```
 
 查看日志：
 
 ```bash
-journalctl -u kx-opc-client -f
+journalctl -u kx_opc_client -f
 ```
 
 日志说明（每台炉台的日志都带 `furnace=炉台号`，连上之前用 IP）：
@@ -237,7 +244,7 @@ journalctl -u kx-opc-client -f
 cmd/kx-opc-client/          程序入口：加载配置、初始化日志、处理信号；-check 校验配置
 internal/
   app/                      组装各模块：启动各炉台采集、定期重读清单、状态汇总、优雅停机
-  config/                   config.yaml 与 furnaces.json 的加载、校验；IP 范围展开；IP → 子表名 / 网段前缀炉台号
+  config/                   config.yaml 与 furnaces.json 的加载、校验；IP 范围展开；IP → 子表名 / 分区备用炉台号
   scanner/                  探测 OPC 端口能否连通，用于筛选 IP 范围中实际存在的炉台
   model/                    公共数据结构
   opc/                      OPC UA 会话：连接、读取点位列表、订阅推送（subscribe.go）

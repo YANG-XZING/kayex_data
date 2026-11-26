@@ -41,3 +41,9 @@ __pycache__/
 **/node_modules/
 *.log
 *.gob
+
+# Renamed compiled application files
+/bigdata_consumer/kx_bigdata_consumer
+/hmi_consumer/kx_hmi_consumer
+/kx-opc-client/kx_opc_client
+/kx-opc-web/kx_opc_web

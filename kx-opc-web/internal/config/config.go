@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -179,10 +180,17 @@ type Clock struct {
 	SyncInterval time.Duration `yaml:"sync_interval"`
 }
 
-// Area 是网段前缀到区号的映射，用于炉台按区筛选。
+// Area 按明确的 IPv4 起止范围分区，范围包含两个端点。
 type Area struct {
-	Prefix string `yaml:"prefix" json:"prefix"`
-	Area   string `yaml:"area" json:"area"`
+	From string `yaml:"from" json:"from"`
+	To   string `yaml:"to" json:"to"`
+	Area string `yaml:"area" json:"area"`
+}
+
+func areaBounds(a Area) (netip.Addr, netip.Addr, bool) {
+	from, errFrom := netip.ParseAddr(a.From)
+	to, errTo := netip.ParseAddr(a.To)
+	return from, to, errFrom == nil && errTo == nil && from.Is4() && to.Is4() && from.Compare(to) <= 0
 }
 
 // Log 是日志配置。
@@ -268,10 +276,15 @@ func (t TDengine) Address() string {
 	return address
 }
 
-// AreaOf 按网段前缀返回 IP 所属的区号，没有匹配时为空。
+// AreaOf 按 IP 起止范围返回区号，没有匹配时为空。
 func (c Config) AreaOf(ip string) string {
+	address, err := netip.ParseAddr(ip)
+	if err != nil || !address.Is4() {
+		return ""
+	}
 	for _, a := range c.Areas {
-		if strings.HasPrefix(ip, a.Prefix) {
+		from, to, ok := areaBounds(a)
+		if ok && address.Compare(from) >= 0 && address.Compare(to) <= 0 {
 			return a.Area
 		}
 	}
@@ -356,8 +369,16 @@ func (c Config) validate() error {
 	check(m.TagsRefresh >= m.Interval, "monitor.tags_refresh 不能小于 monitor.interval")
 
 	check(c.Clock.SyncInterval >= time.Minute, "clock.sync_interval 不能小于 1m")
-	for _, a := range c.Areas {
-		check(a.Prefix != "" && a.Area != "", "areas 中的 prefix、area 都不能为空")
+	for i, a := range c.Areas {
+		from, to, ok := areaBounds(a)
+		check(ok && a.Area != "", "areas[%d] 必须填写合法的 IPv4 起止范围 from、to 和非空 area，且 from 不能大于 to", i)
+		if !ok {
+			continue
+		}
+		for j := 0; j < i; j++ {
+			otherFrom, otherTo, valid := areaBounds(c.Areas[j])
+			check(!valid || from.Compare(otherTo) > 0 || otherFrom.Compare(to) > 0, "areas[%d] 与 areas[%d] 的 IP 范围重叠", i, j)
+		}
 	}
 	return errors.Join(errs...)
 }

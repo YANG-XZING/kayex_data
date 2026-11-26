@@ -5,15 +5,26 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR=/opt/kx-opc-client
-SERVICE=kx-opc-client
+APP_DIR=/opt/kx_opc_client
+SERVICE=kx_opc_client
+LEGACY_SERVICE=kx-opc-client
+LEGACY_DIR=/opt/kx-opc-client
+if systemctl cat "$LEGACY_SERVICE.service" >/dev/null 2>&1; then
+  systemctl stop "$LEGACY_SERVICE.service"
+  systemctl disable "$LEGACY_SERVICE.service" 2>/dev/null || true
+fi
 SPOOL_DEFAULT=/home/kx-opc-client/data   # 默认落盘暂存目录，与 config.yaml 的 tdengine.spool_dir 一致
 
 id kxopc >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin kxopc
 mkdir -p "$APP_DIR/logs"
+for old_config in config.yaml furnaces.json; do
+  if [[ ! -f "$APP_DIR/$old_config" && -f "$LEGACY_DIR/$old_config" ]]; then
+    cp -p "$LEGACY_DIR/$old_config" "$APP_DIR/$old_config"
+  fi
+done
 systemctl stop "$SERVICE" 2>/dev/null || true
 
-install -m 0755 "$SRC/kx-opc-client" "$APP_DIR/kx-opc-client"
+install -m 0755 "$SRC/kx_opc_client" "$APP_DIR/kx_opc_client"
 for f in config.yaml furnaces.json; do
   if [[ -f "$APP_DIR/$f" ]]; then
     echo "保留现有 $APP_DIR/$f（新版示例另存为 $f.new）"
@@ -75,6 +86,6 @@ systemctl enable "$SERVICE"
 echo
 echo "安装完成。下一步："
 echo "  1. 编辑炉台清单：$APP_DIR/furnaces.json"
-echo "  2. 校验配置：sudo -u kxopc $APP_DIR/kx-opc-client -check"
+echo "  2. 校验配置：sudo -u kxopc $APP_DIR/kx_opc_client -check"
 echo "  3. 启动服务：systemctl start $SERVICE"
 echo "  4. 查看日志：journalctl -u $SERVICE -f"

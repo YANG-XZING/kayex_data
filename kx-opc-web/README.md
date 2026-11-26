@@ -4,11 +4,11 @@
 
 
 OPC 服务可视化网站：查看炉台实时数据、实时 / 历史曲线、历史数据导出、通讯预警与告警记录、按晶棒导出、上位机记录，并合并了原 TDengine 取数网站（Flask 版 TD_frontend）的 PLC / CCD 取数和硬件信息（全量数据导出）。要登录，内部账户看全部功能，客户账户只看上位机数据和上位机记录（见下文“账户”）。
-OPC 数据来自 TDengine 库 `kx_opc` 里 kx-opc-client 写入的 `opc_data`，不直连炉台；PLC / CCD 数据来自 `kayex_data`。Go 单程序，前端打包后嵌在程序里，端口 **8700**。
+OPC 数据来自 TDengine 库 `kayex_data` 里 kx-opc-client 写入的 `opc_data`，不直连炉台；PLC / CCD 数据来自 `kayex_data`。Go 单程序，前端打包后嵌在程序里，端口 **8700**。
 
 ## 页面
 
-左侧菜单按数据来源分两组：**OPC 监控**的数据来自 `kx_opc`（kx-opc-client 采集的 `opc_data`），顶部的炉台选择框只在这一组显示，选中的炉台这一组共用；**全量数据导出**的数据来自 `kayex_data`（PLC `dbcenter_data`、CCD `hmi_ccddata`）和 `sop_hardware`，页面里自己选设备，设备清单读 `kayex_data` 的标签，和 OPC 的炉台清单不是一份。
+左侧菜单按数据来源分两组：**OPC 监控**的数据来自 `kayex_data`（kx-opc-client 采集的 `opc_data`），顶部的炉台选择框只在这一组显示，选中的炉台这一组共用；**全量数据导出**的数据来自 `kayex_data`（PLC `dbcenter_data`、CCD `hmi_ccddata`）和 `sop_hardware`，页面里自己选设备，设备清单读 `kayex_data` 的标签，和 OPC 的炉台清单不是一份。
 
 | 菜单 | 说明 |
 |---|---|
@@ -38,25 +38,25 @@ OPC 数据来自 TDengine 库 `kx_opc` 里 kx-opc-client 写入的 `opc_data`，
 
 ## 点位信息
 
-存在 `kx_opc.opc_point_info`，没有配置的点位直接显示列名。两种修改方式，效果一样：
+存在 `kayex_data.opc_point_info`，没有配置的点位直接显示列名。两种修改方式，效果一样：
 
 1. **上传 CSV**：“点位信息”页点“下载 CSV”得到全部点位，在 Excel 里填好后上传。表头 `点位,中文名,DB点位`，列的顺序不限，可以只有其中两列（没有的列不改）；UTF-8 和 Excel 默认的 GBK 编码都认。只修改文件里出现的点位，没有变化的不写库。只有内部账户能上传。
 2. **直接写数据库**：插一行即可，每个点位以最新一行为准，网站每分钟重新读一次：
 
 ```sql
-INSERT INTO kx_opc.opc_point_info (ts, point, name, db_point) VALUES (NOW, 'MELT_TEMP_PV', '熔体温度', '33.124-0');
+INSERT INTO kayex_data.opc_point_info (ts, point, name, db_point) VALUES (NOW, 'MELT_TEMP_PV', '熔体温度', '33.124-0');
 ```
 
 ## 数据表
 
-网站和采集客户端共用库 `kx_opc`。网站自己的两张表是**普通表**，主键为 (ts, 第二列) 复合主键，启动时自动创建（已存在则跳过），**每一列都用 zstd 高压缩**，建表 SQL 见 `sql/web_tables.sql`：
+网站和采集客户端共用库 `kayex_data`。网站自己的两张表是**普通表**，主键为 (ts, 第二列) 复合主键，启动时自动创建（已存在则跳过），**每一列都用 zstd 高压缩**，建表 SQL 见 `sql/web_tables.sql`：
 
 | 表 | 用途 | 列（加粗为复合主键） |
 |---|---|---|
 | `opc_point_info` | 点位信息：每次修改追加一行，每个点位的最新一行为当前值；`customer` 为客户可见（早期建的表启动时自动补这一列） | **`ts`、`point`**、`name`、`db_point`、`customer` |
 | `web_alarm` | 告警事件：只在状态变化时写，触发、恢复各一行（几百台炉台一天通常只有几行到几十行） | **`ts`、`device_ip`**、`device_id`、`alarm_type`、`active`、`seconds` |
 
-- 旧版本的 `web_config`（显示字段、模板）已不再使用，表里没有数据，确认后可以 `DROP TABLE kx_opc.web_config`。
+- 旧版本的 `web_config`（显示字段、模板）已不再使用，表里没有数据，确认后可以 `DROP TABLE kayex_data.web_config`。
 - 同一台炉台同一时刻的两条告警（心跳停止和时间不一致）主键相同，程序会把第二条错开 1 毫秒写入。
 
 ## 告警怎么判定
@@ -74,7 +74,7 @@ INSERT INTO kx_opc.opc_point_info (ts, point, name, db_point) VALUES (NOW, 'MELT
 - 写 TD 失败时事件留在内存（最多 2 万条），下一轮重试；主键是 (ts, device_ip)，重试写到同一行，不会重复。
 - **同一时间只能运行一个 kx-opc-web 实例**写告警，否则同一次告警会被记两遍。
 - 列名特意避开了 TDengine 关键字（如 `value`），手写 SQL 不用加反引号。
-- 库的 KEEP 是 1095 天，配置行会由程序定期重写，避免长期没改的配置过期。
+- 库的 KEEP 是 365 天，配置行会由程序定期重写，避免长期没改的配置过期。
 
 ## 晶棒数据导出
 
@@ -86,7 +86,7 @@ INSERT INTO kx_opc.opc_point_info (ts, point, name, db_point) VALUES (NOW, 'MELT
 - **工步**按工步号（一位小数）分别统计和筛选：21.0 渣盖提出、21.1 粘渣准备、21.2 放断提出是不同的工步。名称和主 / 子工步在 `crystal.step_names` 里配置。工步号是 FLOAT，按 ×10 取整比较（`ROUND(STATE * 10)`）。
 - **导出**按 1 小时一段查询、边查边写，不占内存；中途失败时文件最后一行写“导出中断，数据不完整”。
 
-PLC / CCD 取数也可以**按晶棒导出**：用 kayex_data 自己的晶棒台账 `kayex_data.inner_crystal_info`（编号和 kx_opc 的不是同一套，`extract.crystal_ledger` 配置），查询区间就是这根晶在台账里的起止 ts，其余（点位、CCD 关联、分段、各种导出）和按时间取数完全一样。晶棒时长按台账的采集时间（capture_time，PLC 时钟）算。
+PLC / CCD 取数也可以**按晶棒导出**：用 kayex_data 自己的晶棒台账 `kayex_data.inner_crystal_info`（编号与 OPC 台账不是同一套，`extract.crystal_ledger` 配置），查询区间就是这根晶在台账里的起止 ts，其余（点位、CCD 关联、分段、各种导出）和按时间取数完全一样。晶棒时长按台账的采集时间（capture_time，PLC 时钟）算。
 
 ## 与原取数网站的对照
 
@@ -161,25 +161,25 @@ PLC / CCD 取数和硬件信息是原取数网站（Flask，:8600）的 Go 重�
 ./scripts/build.sh 1.0.0
 ```
 
-把 `dist/kx-opc-web-1.0.0-linux-amd64.tar.gz` 拷到服务器上解压并安装：
+把 `dist/kx_opc_web-1.0.0-linux-amd64.tar.gz` 拷到服务器上解压并安装：
 
 ```bash
-tar xzf kx-opc-web-1.0.0-linux-amd64.tar.gz && cd kx-opc-web-1.0.0-linux-amd64 && sudo ./deploy/install.sh
+tar xzf kx_opc_web-1.0.0-linux-amd64.tar.gz && cd kx_opc_web-1.0.0-linux-amd64 && sudo ./deploy/install.sh
 ```
 
 启动后浏览器打开 `http://<服务器IP>:8700`：
 
 ```bash
-sudo systemctl start kx-opc-web
+sudo systemctl start kx_opc_web
 ```
 
 查看日志：
 
 ```bash
-journalctl -u kx-opc-web -f
+journalctl -u kx_opc_web -f
 ```
 
-配置在 `/opt/kx-opc-web/config.yaml`，每项都有注释。**每次安装都用安装包里的 `config.yaml` 覆盖**，原来的配置备份为 `config.yaml.bak.时间`，所以要改配置请改仓库里的 `configs/config.yaml` 再打包。服务限制内存 512MB（`MemoryLimit`），实际运行约几十 MB。
+配置在 `/opt/kx_opc_web/config.yaml`，每项都有注释。**每次安装都用安装包里的 `config.yaml` 覆盖**，原来的配置备份为 `config.yaml.bak.时间`，所以要改配置请改仓库里的 `configs/config.yaml` 再打包。服务限制内存 512MB（`MemoryLimit`），实际运行约几十 MB。
 
 ## 本机开发
 
@@ -216,3 +216,9 @@ internal/
 web/                  前端源码（Vue 3 + uPlot）
 deploy/ scripts/ sql/ 部署脚本、构建脚本、网站自建表的 SQL
 ```
+
+## 同一网段的 A/B 分区
+
+areas 改用 from/to/area 范围规则；默认 A 区 172.30.3.61–65（5 台），B 区 172.30.3.71–130（60 台），不再使用 prefix。
+实时监控由后端按范围标记分区，PLC/CCD 的设备选择使用相同的数值 IP 匹配，硬件查询的数据来源不变。
+旧版配置需替换为新的范围格式，其他页面布局和功能保持原样。

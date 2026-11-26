@@ -11,7 +11,8 @@ def main():
   p=profile/'kx-opc-client/furnaces.json';package.write(p,json.dumps({'port':4840,'areas':[],'furnaces':['127.0.0.1'],'exclude':[]}))
   package.make_bundle(profile,'verification',work/'out',package.COMPONENTS)
   for component in package.COMPONENTS:
-   path=work/'out'/(component+'-verification-linux-amd64.tar.gz')
+   name=package.APP_NAMES.get(component,component)
+   path=work/'out'/(name+'-verification-linux-amd64.tar.gz')
    expected=path.with_suffix('.gz.sha256').read_text(encoding='utf-8').split()[0]
    with path.open('rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==expected
    with tarfile.open(path) as archive:
@@ -19,10 +20,15 @@ def main():
     for line in checks:
      digest,relative=line.split('  ',1);data=archive.extractfile(root+'/'+relative).read();assert hashlib.sha256(data).hexdigest()==digest
     if component in package.APPS:
-     binary=archive.extractfile(root+'/app/'+component).read();assert binary[:4]==b'\x7fELF' and binary[4]==2
-     assert archive.getmember(root+'/app/'+component).mode==0o755
+     binary=archive.extractfile(root+'/app/'+name).read();assert binary[:4]==b'\x7fELF' and binary[4]==2
+     assert archive.getmember(root+'/app/'+name).mode==0o755
      assert not any('/node_modules/' in name or '/src/' in name for name in names)
-     script=archive.extractfile(root+'/install.sh').read().decode();assert component in script and '\r' not in script
+     script=archive.extractfile(root+'/install.sh').read().decode();assert name in script and '\r' not in script
+     unit=archive.extractfile(root+'/'+name+'.service').read().decode()
+     assert 'ExecStart=/opt/'+name+'/'+name in unit
+     assert 'LEGACY_APP='+repr(component) in script
+     assert 'systemctl stop \"$LEGACY_APP.service\"' in script
+     assert json.load(archive.extractfile(root+'/manifest.json'))['component']==name
      if component in package.ENV_DEFAULTS:
       data=archive.extractfile(root+'/app/service.env').read().decode();assert '${' not in data and 'local-only' in data
     elif component=='tdengine':

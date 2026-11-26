@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"regexp"
 	"strconv"
@@ -17,15 +18,15 @@ import (
 const defaultOPCPort = 4840
 
 var (
-	areaPrefixPattern = regexp.MustCompile(`^(\d{1,3}\.){3}$`)
-	ipRangePattern    = regexp.MustCompile(`^((?:\d{1,3}\.){3})(\d{1,3})-(\d{1,3})$`)
+	ipRangePattern = regexp.MustCompile(`^((?:\d{1,3}\.){3})(\d{1,3})-(\d{1,3})$`)
 )
 
-// Area 是一个区：IP 前三段 + 区号，炉台号 = 区号 + IP 最后一段，如 10.65.108.12 → A12。
-// 只在上位机没有配置设备名（服务端上报默认值 3G14）时使用；IP 不属于任何区也可以采集。
+// Area 按明确的 IPv4 起止范围划分区号，范围包含两个端点。
+// 仅在上位机没有配置设备名时，用区号和 IP 最后一段生成备用炉台号。
 type Area struct {
-	Prefix string `json:"prefix"` // 如 10.65.108.
-	Area   string `json:"area"`   // 如 A
+	From string `json:"from"`
+	To   string `json:"to"`
+	Area string `json:"area"`
 }
 
 // Furnaces 是炉台清单解析结果。
@@ -37,7 +38,7 @@ type Furnaces struct {
 // furnacesFile 对应 furnaces.json。
 type furnacesFile struct {
 	Port     int      `json:"port"`     // 所有炉台的 OPC 端口，默认 4840
-	Areas    []Area   `json:"areas"`    // 区号规则（可选）
+	Areas    []Area   `json:"areas"`    // IP 范围分区规则（可选）
 	Furnaces []string `json:"furnaces"` // 单个 IP（如 10.65.108.12）或 IP 范围（如 10.65.108.1-254）
 	Exclude  []string `json:"exclude"`  // 不采集的 IP
 }
@@ -74,19 +75,21 @@ func ParseFurnaces(raw []byte, tablePrefix string) (Furnaces, error) {
 	if file.Port < 1 || file.Port > 65535 {
 		fail("port 不合法: %d", file.Port)
 	}
-	areas := map[string]Area{}
-	for i, a := range file.Areas {
-		switch {
-		case !areaPrefixPattern.MatchString(a.Prefix) || !validOctets(a.Prefix):
-			fail("areas[%d]: prefix 必须是 IP 前三段加点，如 10.65.108.，当前: %q", i, a.Prefix)
-		case a.Area == "":
-			fail("areas[%d]: area 不能为空", i)
-		case areas[a.Prefix] != (Area{}):
-			fail("areas[%d]: 网段 %s 重复", i, a.Prefix)
-		default:
-			areas[a.Prefix] = a
+	areas := file.Areas
+	for i, a := range areas {
+		from, to, ok := areaBounds(a)
+		if !ok || a.Area == "" {
+			fail("areas[%d]: 必须填写合法的 IPv4 起止范围 from、to 和非空 area，且 from 不能大于 to", i)
+			continue
+		}
+		for j := 0; j < i; j++ {
+			otherFrom, otherTo, valid := areaBounds(areas[j])
+			if valid && from.Compare(otherTo) <= 0 && otherFrom.Compare(to) <= 0 {
+				fail("areas[%d] 与 areas[%d] 的 IP 范围重叠", i, j)
+			}
 		}
 	}
+
 	excluded := map[string]bool{}
 	for _, ip := range file.Exclude {
 		if !isIPv4(ip) {
@@ -166,18 +169,29 @@ func removeIPs(furnaces []model.Furnace, ips map[string]bool) []model.Furnace {
 	return kept
 }
 
-// NewFurnace 生成炉台：子表名 = 前缀 + IP（点换成下划线）；IP 属于某个区时，按区号规则算出备用炉台号（区号 + IP 最后一段）。
-func NewFurnace(ip string, port int, areas map[string]Area, tablePrefix string) model.Furnace {
+// NewFurnace 生成子表名和备用炉台号，如 172.30.3.61 → A061。
+func NewFurnace(ip string, port int, areas []Area, tablePrefix string) model.Furnace {
 	f := model.Furnace{
 		IP:    ip,
 		Port:  port,
 		Table: strings.ToLower(tablePrefix + strings.ReplaceAll(ip, ".", "_")),
 	}
-	dot := strings.LastIndexByte(ip, '.')
-	if area, ok := areas[ip[:dot+1]]; ok {
-		f.AreaDeviceID = area.Area + ip[dot+1:]
+	address, _ := netip.ParseAddr(ip)
+	for _, area := range areas {
+		from, to, ok := areaBounds(area)
+		if ok && address.Is4() && address.Compare(from) >= 0 && address.Compare(to) <= 0 {
+			host, _ := strconv.Atoi(ip[strings.LastIndexByte(ip, '.')+1:])
+			f.AreaDeviceID = fmt.Sprintf("%s%03d", area.Area, host)
+			break
+		}
 	}
 	return f
+}
+
+func areaBounds(a Area) (netip.Addr, netip.Addr, bool) {
+	from, errFrom := netip.ParseAddr(a.From)
+	to, errTo := netip.ParseAddr(a.To)
+	return from, to, errFrom == nil && errTo == nil && from.Is4() && to.Is4() && from.Compare(to) <= 0
 }
 
 func validOctets(prefix string) bool {

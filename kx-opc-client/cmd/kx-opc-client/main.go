@@ -111,8 +111,8 @@ func printFurnaces(cfg *config.Config) error {
 	reachable := scanner.Reachable(context.Background(), list.Ranged, scanner.TCPProbe)
 	fmt.Printf("配置校验通过：TDengine %s.%s\n", cfg.TDengine.Database(), cfg.TDengine.SuperTable)
 	fmt.Printf("单独写出的炉台 %d 台（一定采集）；IP 范围共 %d 个 IP，端口能连通 %d 台\n\n", len(list.Fixed), len(list.Ranged), len(reachable))
-	fmt.Printf("炉台号以上位机配置的设备名为准（连上后确定）；上位机为默认值 %s 时用下表的网段前缀炉台号，没有则就用 %s\n\n", model.DefaultDeviceName, model.DefaultDeviceName)
-	fmt.Printf("%-28s %-22s %-14s %s\n", "OPC 端点", "子表", "网段前缀炉台号", "来源")
+	fmt.Printf("炉台号以上位机配置的设备名为准（连上后确定）；上位机为默认值 %s 时用下表的分区备用炉台号，没有则就用 %s\n\n", model.DefaultDeviceName, model.DefaultDeviceName)
+	fmt.Printf("%-28s %-22s %-14s %s\n", "OPC 端点", "子表", "分区备用炉台号", "来源")
 	row := func(f model.Furnace, from string) {
 		areaID := f.AreaDeviceID
 		if areaID == "" {
